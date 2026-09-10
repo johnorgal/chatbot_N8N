@@ -1,0 +1,416 @@
+{
+  "name": "Telegram Temperatura Brasil",
+  "nodes": [
+    {
+      "parameters": {
+        "updates": ["message"],
+        "additionalFields": {}
+      },
+      "id": "telegram-trigger",
+      "name": "Telegram Trigger",
+      "type": "n8n-nodes-base.telegramTrigger",
+      "typeVersion": 1.2,
+      "position": [0, 300],
+      "webhookId": "temperatura-brasil-bot",
+      "credentials": {
+        "telegramApi": {
+          "id": "REPLACE_WITH_TELEGRAM_CREDENTIAL_ID",
+          "name": "Telegram Bot"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": false,
+                  "leftValue": "",
+                  "typeValidation": "loose",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "id": "cond-start",
+                    "leftValue": "={{ $json.message.text }}",
+                    "rightValue": "/start",
+                    "operator": {
+                      "type": "string",
+                      "operation": "startsWith"
+                    }
+                  },
+                  {
+                    "id": "cond-ajuda",
+                    "leftValue": "={{ $json.message.text }}",
+                    "rightValue": "/ajuda",
+                    "operator": {
+                      "type": "string",
+                      "operation": "startsWith"
+                    }
+                  }
+                ],
+                "combinator": "or"
+              },
+              "renameOutput": true,
+              "outputKey": "ajuda"
+            }
+          ]
+        },
+        "options": {
+          "fallbackOutput": "extra"
+        }
+      },
+      "id": "switch-comando",
+      "name": "Switch Comando",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.2,
+      "position": [260, 300]
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $('Telegram Trigger').item.json.message.chat.id }}",
+        "text": "=Olá! Eu informo a temperatura atual de qualquer cidade do Brasil.\n\nEnvie no formato:\nCidade, UF\n\nExemplos:\n• Campinas, SP\n• Curitiba, PR\n• Belo Horizonte, Minas Gerais\n\nComandos: /start /ajuda",
+        "additionalFields": {
+          "appendAttribution": false
+        }
+      },
+      "id": "telegram-ajuda",
+      "name": "Resposta Ajuda",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [560, 120],
+      "credentials": {
+        "telegramApi": {
+          "id": "REPLACE_WITH_TELEGRAM_CREDENTIAL_ID",
+          "name": "Telegram Bot"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const text = String($json.message?.text || '').trim();\nconst chatId = $json.message?.chat?.id;\n\nconst UF_TO_STATE = {\n  AC: 'Acre', AL: 'Alagoas', AP: 'Amapá', AM: 'Amazonas',\n  BA: 'Bahia', CE: 'Ceará', DF: 'Distrito Federal', ES: 'Espírito Santo',\n  GO: 'Goiás', MA: 'Maranhão', MT: 'Mato Grosso', MS: 'Mato Grosso do Sul',\n  MG: 'Minas Gerais', PA: 'Pará', PB: 'Paraíba', PR: 'Paraná',\n  PE: 'Pernambuco', PI: 'Piauí', RJ: 'Rio de Janeiro', RN: 'Rio Grande do Norte',\n  RS: 'Rio Grande do Sul', RO: 'Rondônia', RR: 'Roraima', SC: 'Santa Catarina',\n  SP: 'São Paulo', SE: 'Sergipe', TO: 'Tocantins'\n};\n\nfunction normalize(value) {\n  return String(value || '')\n    .normalize('NFD')\n    .replace(/[\\u0300-\\u036f]/g, '')\n    .toLowerCase()\n    .trim();\n}\n\nif (!text.includes(',')) {\n  return [{\n    json: {\n      valid: false,\n      chatId,\n      message: 'Envie no formato: Cidade, UF\\nExemplo: Campinas, SP'\n    }\n  }];\n}\n\nconst commaIndex = text.indexOf(',');\nconst cidade = text.slice(0, commaIndex).trim();\nconst estadoRaw = text.slice(commaIndex + 1).trim();\n\nif (!cidade || !estadoRaw) {\n  return [{\n    json: {\n      valid: false,\n      chatId,\n      message: 'Envie no formato: Cidade, UF\\nExemplo: Campinas, SP'\n    }\n  }];\n}\n\nconst estadoUpper = estadoRaw.toUpperCase();\nlet uf = null;\nlet estadoNome = null;\n\nif (UF_TO_STATE[estadoUpper]) {\n  uf = estadoUpper;\n  estadoNome = UF_TO_STATE[estadoUpper];\n} else {\n  const match = Object.entries(UF_TO_STATE).find(([, name]) => normalize(name) === normalize(estadoRaw));\n  if (match) {\n    uf = match[0];\n    estadoNome = match[1];\n  }\n}\n\nif (!uf || !estadoNome) {\n  return [{\n    json: {\n      valid: false,\n      chatId,\n      message: 'Não reconheci esse estado. Use a UF (ex.: SP) ou o nome completo (ex.: São Paulo).'\n    }\n  }];\n}\n\nreturn [{\n  json: {\n    valid: true,\n    chatId,\n    cidade,\n    uf,\n    estadoNome,\n    estadoNorm: normalize(estadoNome)\n  }\n}];"
+      },
+      "id": "parse-mensagem",
+      "name": "Parse Mensagem",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [560, 400]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "cond-valid",
+              "leftValue": "={{ $json.valid }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "if-formato-valido",
+      "name": "Formato Valido?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [800, 400]
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $json.chatId }}",
+        "text": "={{ $json.message }}",
+        "additionalFields": {
+          "appendAttribution": false
+        }
+      },
+      "id": "telegram-formato-invalido",
+      "name": "Resposta Formato Invalido",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [1060, 560],
+      "credentials": {
+        "telegramApi": {
+          "id": "REPLACE_WITH_TELEGRAM_CREDENTIAL_ID",
+          "name": "Telegram Bot"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const parsed = $json;\nconst apiKey = $env.OPENWEATHER_API_KEY;\n\nif (!apiKey) {\n  return [{\n    json: {\n      found: false,\n      chatId: parsed.chatId,\n      message: 'A chave OPENWEATHER_API_KEY não está configurada no container.'\n    }\n  }];\n}\n\nfunction normalize(value) {\n  return String(value || '')\n    .normalize('NFD')\n    .replace(/[\\u0300-\\u036f]/g, '')\n    .toLowerCase()\n    .trim();\n}\n\nlet candidates = [];\ntry {\n  candidates = await this.helpers.httpRequest({\n    method: 'GET',\n    url: 'https://api.openweathermap.org/geo/1.0/direct',\n    qs: {\n      q: `${parsed.cidade},BR`,\n      limit: 5,\n      appid: apiKey\n    },\n    json: true\n  });\n} catch (error) {\n  return [{\n    json: {\n      found: false,\n      chatId: parsed.chatId,\n      message: 'Não consegui localizar a cidade agora. Tente novamente em instantes.'\n    }\n  }];\n}\n\nif (!Array.isArray(candidates)) {\n  candidates = [];\n}\n\nconst match = candidates.find((item) => {\n  if (String(item.country || '').toUpperCase() !== 'BR') return false;\n  return normalize(item.state) === parsed.estadoNorm;\n});\n\nif (!match) {\n  return [{\n    json: {\n      found: false,\n      chatId: parsed.chatId,\n      message: `Não encontrei ${parsed.cidade} em ${parsed.uf}. Confira o nome da cidade e a UF.`\n    }\n  }];\n}\n\nreturn [{\n  json: {\n    found: true,\n    chatId: parsed.chatId,\n    cidade: parsed.cidade,\n    uf: parsed.uf,\n    estadoNome: parsed.estadoNome,\n    name: match.name || parsed.cidade,\n    lat: match.lat,\n    lon: match.lon\n  }\n}];"
+      },
+      "id": "geocode-filtrar",
+      "name": "Geocode e Filtrar Estado",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1060, 280]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "cond-found",
+              "leftValue": "={{ $json.found }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "if-cidade-encontrada",
+      "name": "Cidade Encontrada?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [1300, 280]
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $json.chatId }}",
+        "text": "={{ $json.message }}",
+        "additionalFields": {
+          "appendAttribution": false
+        }
+      },
+      "id": "telegram-nao-encontrada",
+      "name": "Resposta Nao Encontrada",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [1560, 440],
+      "credentials": {
+        "telegramApi": {
+          "id": "REPLACE_WITH_TELEGRAM_CREDENTIAL_ID",
+          "name": "Telegram Bot"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "url": "https://api.openweathermap.org/data/2.5/weather",
+        "authentication": "none",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "lat",
+              "value": "={{ $json.lat }}"
+            },
+            {
+              "name": "lon",
+              "value": "={{ $json.lon }}"
+            },
+            {
+              "name": "units",
+              "value": "metric"
+            },
+            {
+              "name": "lang",
+              "value": "pt_br"
+            },
+            {
+              "name": "appid",
+              "value": "={{ $env.OPENWEATHER_API_KEY }}"
+            }
+          ]
+        },
+        "options": {
+          "response": {
+            "response": {
+              "neverError": true
+            }
+          }
+        }
+      },
+      "id": "http-weather",
+      "name": "Clima Atual OpenWeather",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1560, 160]
+    },
+    {
+      "parameters": {
+        "jsCode": "const location = $('Geocode e Filtrar Estado').first().json;\nconst weather = $json;\n\nif (!weather || weather.cod === '401' || weather.cod === 401) {\n  return [{\n    json: {\n      chatId: location.chatId,\n      text: 'Não consegui consultar o clima agora. Verifique a chave da OpenWeather e tente de novo.'\n    }\n  }];\n}\n\nif (!weather.main || weather.main.temp == null) {\n  return [{\n    json: {\n      chatId: location.chatId,\n      text: 'Não encontrei dados de temperatura para essa cidade. Tente novamente.'\n    }\n  }];\n}\n\nconst temp = Math.round(Number(weather.main.temp));\nconst description = weather.weather?.[0]?.description || 'condições estáveis';\nconst cityLabel = location.name || location.cidade;\n\nreturn [{\n  json: {\n    chatId: location.chatId,\n    text: `Em ${cityLabel} (${location.uf}) está ${temp}°C agora, com ${description}.`\n  }\n}];"
+      },
+      "id": "formatar-resposta",
+      "name": "Formatar Resposta",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1800, 160]
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $json.chatId }}",
+        "text": "={{ $json.text }}",
+        "additionalFields": {
+          "appendAttribution": false
+        }
+      },
+      "id": "telegram-temperatura",
+      "name": "Resposta Temperatura",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [2040, 160],
+      "credentials": {
+        "telegramApi": {
+          "id": "REPLACE_WITH_TELEGRAM_CREDENTIAL_ID",
+          "name": "Telegram Bot"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Telegram Trigger": {
+      "main": [
+        [
+          {
+            "node": "Switch Comando",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Switch Comando": {
+      "main": [
+        [
+          {
+            "node": "Resposta Ajuda",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Parse Mensagem",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse Mensagem": {
+      "main": [
+        [
+          {
+            "node": "Formato Valido?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Formato Valido?": {
+      "main": [
+        [
+          {
+            "node": "Geocode e Filtrar Estado",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Resposta Formato Invalido",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Geocode e Filtrar Estado": {
+      "main": [
+        [
+          {
+            "node": "Cidade Encontrada?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Cidade Encontrada?": {
+      "main": [
+        [
+          {
+            "node": "Clima Atual OpenWeather",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Resposta Nao Encontrada",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Clima Atual OpenWeather": {
+      "main": [
+        [
+          {
+            "node": "Formatar Resposta",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Formatar Resposta": {
+      "main": [
+        [
+          {
+            "node": "Resposta Temperatura",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "timezone": "America/Sao_Paulo"
+  },
+  "versionId": "1",
+  "meta": {
+    "templateCredsSetupCompleted": false,
+    "instanceId": "temperatura-brasil-local"
+  },
+  "tags": [
+    {
+      "name": "telegram"
+    },
+    {
+      "name": "clima"
+    }
+  ]
+}
